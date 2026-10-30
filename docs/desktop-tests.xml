@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuite name="desktop" failures="0" errors="0" skipped="0" tests="2"><testcase classname="tests.integration.test_desktop" name="test_desktop_login_create_scan_profile" time="5.756" /><testcase classname="tests.integration.test_desktop" name="test_desktop_all_roles_and_billing_receipt" time="12.838" /></testsuite>

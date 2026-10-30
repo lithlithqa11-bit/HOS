@@ -1,0 +1,9 @@
+{
+  "n": 10000,
+  "lookups": 1000,
+  "hash_seconds": 0.0008476000002701767,
+  "linear_seconds": 0.13487140000142972,
+  "queue_insert_remove_seconds": 0.004455000002053566,
+  "heap_insert_extract_seconds": 0.3773889000003692,
+  "chain_graph_bfs_seconds": 0.05902570000034757
+}

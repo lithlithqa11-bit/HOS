@@ -1,0 +1,15 @@
+$ErrorActionPreference = 'Stop'
+Set-Location (Split-Path $PSScriptRoot -Parent)
+if (-not (Test-Path '.venv/Scripts/python.exe')) {
+    py -3.12 -m venv .venv
+    if ($LASTEXITCODE -ne 0) { throw 'Python 3.12+ is required' }
+}
+& ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+& ./.venv/Scripts/python.exe -m scripts.setup_local
+if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL setup failed; check PG_BIN and README' }
+& ./.venv/Scripts/python.exe -m alembic upgrade head
+if ($LASTEXITCODE -ne 0) { throw 'Migration failed' }
+& ./.venv/Scripts/python.exe -m scripts.seed
+if ($LASTEXITCODE -ne 0) { throw 'Seed failed' }
+Write-Host 'Ready. Run scripts/run_demo.ps1. Demo password is in the local ignored .env file.'

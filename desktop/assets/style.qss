@@ -1,0 +1,17 @@
+QWidget { font-family: "Segoe UI"; font-size: 14px; color: #153747; background: #f4f8fb; }
+QMainWindow, QStackedWidget { background: #f4f8fb; }
+QLabel#brand { font-size: 26px; font-weight: 700; color: #087e8b; padding: 18px 8px; }
+QLabel#pageTitle { font-size: 28px; font-weight: 700; color: #133b50; padding-bottom: 8px; }
+QLabel#subtitle { color: #587283; padding-bottom: 14px; }
+QLabel#card { background: white; border: 1px solid #dce8ed; border-radius: 12px; padding: 32px; font-size: 20px; }
+QLineEdit, QSpinBox, QDateEdit, QDateTimeEdit, QComboBox { background: white; border: 1px solid #c9dce4; border-radius: 7px; padding: 8px; min-height: 22px; }
+QPushButton { background: #087e8b; color: white; border: none; border-radius: 7px; padding: 10px 15px; font-weight: 600; }
+QPushButton:hover { background: #066772; }
+QPushButton:disabled { background: #9bbbc0; }
+QListWidget { background: #133b50; color: #effcff; border: none; border-radius: 10px; padding: 10px; }
+QListWidget::item { padding: 13px; border-radius: 6px; }
+QListWidget::item:selected { background: #087e8b; color: white; }
+QTableWidget { background: white; alternate-background-color: #eff7fa; border: 1px solid #dce8ed; gridline-color: #e5edf1; border-radius: 8px; selection-background-color: #b7e6ed; selection-color: #133b50; }
+QHeaderView::section { background: #e1eef3; color: #234c60; border: none; padding: 12px; font-weight: 600; }
+QTextBrowser { background: white; border: 1px solid #dce8ed; border-radius: 10px; padding: 20px; }
+QStatusBar { background: #e1eef3; color: #234c60; }

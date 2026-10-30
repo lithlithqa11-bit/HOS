@@ -1,0 +1,10 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {"name": "MediLink API", "type": "debugpy", "request": "launch", "module": "uvicorn",
+     "args": ["backend.app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+     "cwd": "${workspaceFolder}", "envFile": "${workspaceFolder}/.env"},
+    {"name": "MediLink Desktop", "type": "debugpy", "request": "launch", "module": "desktop.main",
+     "cwd": "${workspaceFolder}", "envFile": "${workspaceFolder}/.env"}
+  ]
+}
