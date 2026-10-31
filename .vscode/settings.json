@@ -2,5 +2,9 @@
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
   "python.testing.pytestEnabled": true,
   "python.testing.pytestArgs": ["tests"],
-  "files.exclude": {"**/__pycache__": true, ".runtime": true}
+  "files.exclude": {
+    "**/__pycache__": true,
+    ".runtime": true
+  },
+  "cmake.sourceDirectory": "C:/Users/krar9/Documents/ChatGPT/مزتحفه/nfc_cpp"
 }

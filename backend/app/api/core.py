@@ -1,11 +1,11 @@
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from backend.app.core.security import (audit, current_employee, hash_password, issue_token,
                                       require, role_names, verify_password)
 from backend.app.db.session import get_db
-from backend.app.db.models import (Employee, Patient, PatientHospitalAccess, NFCCard, Visit, Diagnosis,
+from backend.app.db.models import (Employee, Patient, PatientHospitalAccess, NFCCard, Visit, Diagnosis, Appointment,
                                    Allergy, ChronicCondition, Hospital, Role, AuditLog, utcnow)
 from backend.app.schemas.requests import (Login, PatientInput, TokenInput, VisitInput, FactInput,
                                           AccessInput, ShareInput, HospitalInput, EmployeeInput, EmployeeUpdate)
@@ -48,6 +48,24 @@ def doctors(employee=Depends(current_employee), db: Session = Depends(get_db, sc
     return [staff_info(e) for e in db.scalars(select(Employee).where(
         Employee.hospital_id == employee.hospital_id, Employee.active.is_(True),
         Employee.roles.any(Role.name == 'doctor')).order_by(Employee.id))]
+
+
+@router.get('/doctor-directory')
+def doctor_directory(employee=Depends(current_employee), db: Session = Depends(get_db, scope='function')):
+    """Directory for reception: doctors available in the employee's hospital."""
+    rows = db.execute(select(Employee, Hospital).join(Hospital, Hospital.id == Employee.hospital_id)
+                      .where(Employee.hospital_id == employee.hospital_id,
+                             Employee.active.is_(True), Employee.roles.any(Role.name == 'doctor'))
+                      .order_by(Employee.full_name)).all()
+    result = []
+    for doctor, hospital in rows:
+        count = db.scalar(select(func.count()).select_from(Appointment)
+                          .where(Appointment.doctor_id == doctor.id)) or 0
+        result.append({'id': doctor.id, 'full_name': doctor.full_name, 'username': doctor.username,
+                       'hospital_id': hospital.id, 'hospital_name': hospital.name,
+                       'active': doctor.active, 'appointments_count': count})
+    audit(db, employee, 'doctor.directory.read')
+    return result
 
 
 @router.post('/patients', status_code=201)

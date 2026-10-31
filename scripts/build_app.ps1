@@ -13,7 +13,7 @@ if (-not (Test-Path $windres)) { throw "Missing windres: $windres" }
 $shortRoot = (cmd /c "for %I in (`"$root`") do @echo %~sI").Trim()
 if (-not $shortRoot) { $shortRoot = $root }
 $shortOut = Join-Path $shortRoot 'dist\MediLink-NFC.exe'
-& $gxx -std=c++17 -mwindows -O2 desktop/launcher.cpp .runtime/launcher-res.o -o $shortOut
+& $gxx -std=c++17 -mwindows -static -O2 desktop/launcher.cpp .runtime/launcher-res.o -o $shortOut
 if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed' }
 $shortcutScript = @"
 `$ws = New-Object -ComObject WScript.Shell

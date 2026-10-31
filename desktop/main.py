@@ -7,7 +7,7 @@ from PySide6.QtGui import QFontDatabase, QFont
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                               QStackedWidget, QLabel, QListWidget, QMessageBox)
 from desktop.api_client import ApiClient, Tasks
-from desktop.screens.core import LoginScreen, Dashboard, PatientsPage, ProfilePage, NFCPage
+from desktop.screens.core import LoginScreen, Dashboard, PatientsPage, ProfilePage, NFCPage, DoctorsPage
 from desktop.widgets.common import button
 from desktop.screens.modules import AppointmentsPage, EmergencyPage, PharmacyPage, BillingPage, ReferralsPage, AdminPage
 
@@ -80,6 +80,8 @@ class MainWindow(QMainWindow):
         if self.has_role('doctor', 'nurse', 'receptionist'):
             self.add_page('المواعيد والطابور', AppointmentsPage(self))
             self.add_page('المستشفيات والإحالات', ReferralsPage(self))
+        if self.has_role('receptionist', 'doctor', 'admin'):
+            self.add_page('دليل الأطباء', DoctorsPage(self))
         if self.has_role('doctor', 'nurse'):
             self.add_page('الطوارئ والفرز', EmergencyPage(self))
         if self.has_role('doctor', 'pharmacist'):

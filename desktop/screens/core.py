@@ -39,6 +39,10 @@ class Dashboard(Page):
         self.summary.setWordWrap(True)
         self.summary.setObjectName('card')
         self.layout.addWidget(self.summary)
+        self.finance = QLabel('')
+        self.finance.setObjectName('card')
+        self.finance.setWordWrap(True)
+        self.layout.addWidget(self.finance)
         self.work = DataTable([('id', 'الرقم'), ('patient_id', 'المريض'), ('status', 'الحالة')])
         self.layout.addWidget(self.work)
 
@@ -51,12 +55,26 @@ class Dashboard(Page):
                         'admin': 'الإدارة: المستشفيات والموظفون وصلاحيات الوصول وسجل التدقيق.'}
         self.summary.setText(f"{e['full_name']}\nالمستشفى رقم {e['hospital_id']}\n\n" +
                              '\n'.join(descriptions[r] for r in e['roles']))
+        if self.window.has_role('receptionist'):
+            self.finance.setText('جاري تحميل ملخص الفواتير…')
+            self.request('GET', '/api/invoices', done=self.show_finance)
+        else:
+            self.finance.setText('لوحة مالية متاحة لموظف الاستقبال فقط')
         if self.window.has_role('admin'):
             self.work.hide()
         else:
             path = '/api/prescriptions' if self.window.has_role('pharmacist') else (
                 '/api/emergencies' if self.window.has_role('nurse') else '/api/waiting-queue')
             self.request('GET', path, done=self.work.populate)
+
+    def show_finance(self, invoices):
+        total = sum(float(row.get('total') or 0) for row in invoices)
+        paid = sum(float(row.get('paid') or 0) for row in invoices)
+        remaining = sum(float(row.get('remaining') or 0) for row in invoices)
+        self.finance.setText(
+            f"ملخص الاستقبال المالي\n"
+            f"الفواتير: {len(invoices)}  •  الصافي: {total:,.2f} IQD\n"
+            f"المدفوع: {paid:,.2f} IQD  •  المتبقي: {remaining:,.2f} IQD")
 
 
 class PatientsPage(Page):
@@ -100,6 +118,19 @@ class PatientsPage(Page):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.request('PUT' if editing else 'POST', f"/api/patients/{row['id']}" if editing else '/api/patients',
                          dialog.data(), done=lambda result: self.window.open_patient(result['id']))
+
+
+class DoctorsPage(Page):
+    def __init__(self, window):
+        super().__init__(window, 'دليل الأطباء', 'الأطباء الفعالون في مستشفاك مع عدد الحجوزات الحالية.')
+        button('تحديث', self.refresh, self.actions)
+        self.table = DataTable([('full_name', 'اسم الطبيب'), ('username', 'الحساب'),
+                                ('hospital_name', 'المستشفى'), ('active', 'الحالة'),
+                                ('appointments_count', 'عدد الحجوزات')])
+        self.layout.addWidget(self.table)
+
+    def refresh(self):
+        self.request('GET', '/api/doctor-directory', done=self.table.populate)
 
 
 class ProfilePage(Page):
@@ -184,7 +215,11 @@ class NFCPage(Page):
         self.actions.addWidget(self.mode)
         self.token = line('ألصق رمز البطاقة التجريبية أو أصدر بطاقة من ملف المريض')
         self.layout.addWidget(self.token)
+        self.status = QLabel('الحالة: جاهز للمحاكاة')
+        self.status.setObjectName('card')
+        self.layout.addWidget(self.status)
         button('قراءة البطاقة', self.scan, self.actions)
+        button('مسح الرمز', lambda: self.token.clear(), self.actions)
         if window.has_role('receptionist'):
             button('كتابة الرمز على بطاقة Type 2 تجريبية', self.write, self.actions)
         self.layout.addStretch()
@@ -193,8 +228,20 @@ class NFCPage(Page):
         from desktop.nfc_bridge import MockNFCReader, RealNFCReader
         reader = MockNFCReader() if self.mode.currentData() == 'mock' else RealNFCReader(self.window.nfc_executable)
         token = self.token.text().strip()
-        self.window.tasks.submit(lambda: reader.read(token), lambda result: self.request(
-            'POST', '/api/nfc/scan', {'token': result['token']}, done=self.window.show_scanned))
+        if not token and self.mode.currentData() == 'mock':
+            self.status.setText('الحالة: أدخل رمز بطاقة أو أصدر بطاقة من ملف المريض')
+            return
+        self.status.setText('الحالة: جارٍ قراءة البطاقة…')
+        self.window.tasks.submit(lambda: reader.read(token), self.scan_result)
+
+    def scan_result(self, result):
+        self.request('POST', '/api/nfc/scan', {'token': result['token']}, done=self.scanned)
+
+    def scanned(self, data):
+        token = str(data.get('card', {}).get('token') or data.get('token') or '')
+        masked = (token[:8] + '…' + token[-6:]) if len(token) > 16 else token
+        self.status.setText(f'الحالة: تمت القراءة بنجاح • الرمز {masked}')
+        self.window.show_scanned(data)
 
     def write(self):
         from desktop.nfc_bridge import RealNFCReader

@@ -20,6 +20,7 @@ class AppointmentsPage(Page):
         button('طابور الانتظار', lambda: self.load(True), self.actions)
         if window.has_role('receptionist'):
             button('حجز', lambda: self.edit(False), self.actions)
+            button('حجز لطبيب', lambda: self.edit(False), self.actions)
             button('تعديل', lambda: self.edit(True), self.actions)
             button('حضور', lambda: self.action('check-in'), self.actions)
             button('إلغاء', lambda: self.action('cancel'), self.actions)
