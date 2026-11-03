@@ -9,7 +9,6 @@ from pathlib import Path
 from uuid import uuid4
 from dotenv import load_dotenv
 import httpx
-from desktop.nfc_bridge import MockNFCReader
 
 
 def main():
@@ -31,8 +30,7 @@ def main():
                         'birth_date': '2003-05-15', 'sex': 'male', 'phone': '00000000000'})
         pid = patient['id']
         card = call(receptionist, 'POST', f'/api/patients/{pid}/cards')
-        read = MockNFCReader().read(card['token'])
-        assert call(receptionist, 'POST', '/api/nfc/scan', {'token': read['token']})['id'] == pid
+        assert call(receptionist, 'POST', '/api/nfc/scan', {'token': card['token']})['id'] == pid
         doctors = call(receptionist, 'GET', '/api/doctors')
         start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
         existing = call(receptionist, 'GET', '/api/appointments')
@@ -81,9 +79,9 @@ def main():
         runtime = Path('.runtime')
         runtime.mkdir(exist_ok=True)
         (runtime / 'demo-run.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
-        (runtime / 'mock-card.txt').write_text(card['token'], encoding='ascii')
+        (runtime / 'demo-card-token.txt').write_text(card['token'], encoding='ascii')
         print(json.dumps(summary, ensure_ascii=True, indent=2))
-        print('Acceptance workflow succeeded. Mock token saved only in ignored .runtime/mock-card.txt')
+        print('Acceptance workflow succeeded. Demo token saved only in ignored .runtime/demo-card-token.txt')
 
 
 if __name__ == '__main__':

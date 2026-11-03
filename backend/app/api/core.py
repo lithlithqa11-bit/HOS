@@ -110,8 +110,10 @@ def update_patient(patient_id: int, data: PatientInput, employee=Depends(require
 def issue_card(patient_id: int, employee=Depends(require('receptionist')), db: Session = Depends(get_db, scope='function')):
     patient_access(db, employee, patient_id)
     get_or_404(db, Patient, patient_id, lock=True)
-    old_cards = db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id, NFCCard.active.is_(True))).all()
-    for old in old_cards:
+    open_cards = db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id,
+                                                  NFCCard.revoked_at.is_(None))).all()
+    replacing = any(card.active for card in open_cards)
+    for old in open_cards:
         old.active, old.revoked_at = False, utcnow()
         card_cache.invalidate(old.token_hash)
     db.flush()
@@ -119,15 +121,73 @@ def issue_card(patient_id: int, employee=Depends(require('receptionist')), db: S
     card = NFCCard(patient_id=patient_id, token_hash=token_hash(token))
     db.add(card)
     db.flush()
-    audit(db, employee, 'nfc.replace' if old_cards else 'nfc.issue', patient_id, f'card:{card.id}')
+    audit(db, employee, 'nfc.replace' if replacing else 'nfc.issue', patient_id, f'card:{card.id}')
     return {'card_id': card.id, 'token': token, 'patient_id': patient_id}
+
+
+@router.post('/patients/{patient_id}/cards/prepare', status_code=201)
+def prepare_card(patient_id: int, employee=Depends(require('receptionist')),
+                 db: Session = Depends(get_db, scope='function')):
+    """Reserve a token without invalidating the patient's current card."""
+    patient_access(db, employee, patient_id)
+    get_or_404(db, Patient, patient_id, lock=True)
+    pending = db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id,
+                                               NFCCard.active.is_(False), NFCCard.revoked_at.is_(None))).all()
+    for card in pending:
+        card.revoked_at = utcnow()
+    token = secrets.token_hex(32)
+    card = NFCCard(patient_id=patient_id, token_hash=token_hash(token), active=False)
+    db.add(card)
+    db.flush()
+    audit(db, employee, 'nfc.prepare', patient_id, f'card:{card.id}')
+    return {'card_id': card.id, 'token': token, 'patient_id': patient_id}
+
+
+@router.post('/patients/{patient_id}/cards/{card_id}/activate')
+def activate_card(patient_id: int, card_id: int, data: TokenInput,
+                  employee=Depends(require('receptionist')),
+                  db: Session = Depends(get_db, scope='function')):
+    """Activate only the token the desktop verified on a physical card."""
+    patient_access(db, employee, patient_id)
+    get_or_404(db, Patient, patient_id, lock=True)
+    card = db.scalar(select(NFCCard).where(NFCCard.id == card_id, NFCCard.patient_id == patient_id))
+    if card is None:
+        raise HTTPException(404, 'البطاقة غير موجودة')
+    if card.token_hash != token_hash(data.token):
+        raise HTTPException(409, 'رمز البطاقة لا يطابق الرمز المحجوز')
+    if card.active:
+        return {'card_id': card.id, 'patient_id': patient_id, 'active': True}
+    if card.revoked_at is not None:
+        raise HTTPException(409, 'انتهت صلاحية تجهيز البطاقة؛ أعد المحاولة من ملف المريض')
+    open_cards = db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id,
+                                                  NFCCard.id != card_id,
+                                                  NFCCard.revoked_at.is_(None))).all()
+    replacing = any(old.active for old in open_cards)
+    for old in open_cards:
+        old.active, old.revoked_at = False, utcnow()
+        card_cache.invalidate(old.token_hash)
+    db.flush()
+    card.active = True
+    audit(db, employee, 'nfc.replace' if replacing else 'nfc.issue', patient_id, f'card:{card.id}')
+    return {'card_id': card.id, 'patient_id': patient_id, 'active': True}
+
+
+@router.get('/patients/{patient_id}/cards')
+def card_status(patient_id: int, employee=Depends(current_employee), db: Session = Depends(get_db, scope='function')):
+    """Return safe card metadata; the secret token is never returned here."""
+    patient_access(db, employee, patient_id)
+    cards = db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id)
+                       .order_by(NFCCard.issued_at.desc(), NFCCard.id.desc())).all()
+    return [{'card_id': card.id, 'active': card.active, 'issued_at': card.issued_at,
+             'revoked_at': card.revoked_at} for card in cards]
 
 
 @router.delete('/patients/{patient_id}/cards')
 def revoke_card(patient_id: int, employee=Depends(require('receptionist')), db: Session = Depends(get_db, scope='function')):
     patient_access(db, employee, patient_id)
     get_or_404(db, Patient, patient_id, lock=True)
-    for card in db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id, NFCCard.active.is_(True))):
+    for card in db.scalars(select(NFCCard).where(NFCCard.patient_id == patient_id,
+                                                 NFCCard.revoked_at.is_(None))):
         card.active, card.revoked_at = False, utcnow()
         card_cache.invalidate(card.token_hash)
     audit(db, employee, 'nfc.revoke', patient_id)

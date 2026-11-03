@@ -21,7 +21,9 @@
 ## NFC
 
 - `POST /patients/{id}/cards`: استقبال؛ يصدر رمزاً جديداً ويلغي كل بطاقة فعالة سابقة ضمن معاملة. يعيد card_id وtoken وpatient_id. token هو 64 خانة hex عشوائية ويظهر مرة واحدة.
-- `DELETE /patients/{id}/cards`: إلغاء البطاقة الفعالة.
+- `POST /patients/{id}/cards/prepare`: استقبال؛ يحجز رمزاً غير فعال دون إلغاء البطاقة السابقة، ويعيد card_id وtoken وpatient_id. هذا هو مسار التهيئة الآلية في الواجهة.
+- `POST /patients/{id}/cards/{card_id}/activate`: استقبال؛ body فيه token المحجوز. يُستدعى بعد نجاح الكتابة والتحقق، فيفعّل الجديدة ويلغي القديمة ضمن معاملة واحدة.
+- `DELETE /patients/{id}/cards`: إلغاء البطاقة الفعالة وأي تجهيز معلّق.
 - `POST /nfc/scan`: كل موظف مسجل؛ body فيه token فقط. يعيد نفس إسقاط الصلاحيات الخاص بملف المريض. لا يقبل UID.
 
 ## المواعيد وQueue

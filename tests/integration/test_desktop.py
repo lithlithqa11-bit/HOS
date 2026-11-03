@@ -5,7 +5,7 @@ import sys
 import time
 import httpx
 import pytest
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from PySide6.QtCore import QTimer, Qt
 from desktop.main import MainWindow
 from desktop.widgets.common import Form
@@ -38,7 +38,7 @@ def live_api(client):
             process.wait(timeout=10)
 
 
-def test_desktop_login_create_scan_profile(qtbot, live_api):
+def test_desktop_login_create_scan_profile(qtbot, live_api, monkeypatch):
     window = MainWindow(live_api)
     qtbot.addWidget(window)
     failures = []
@@ -64,9 +64,15 @@ def test_desktop_login_create_scan_profile(qtbot, live_api):
     page.edit(False)
     profile = window.page_map['ملف المريض']
     qtbot.waitUntil(lambda: 'مريض من واجهة PySide6' in profile.view.toPlainText(), timeout=15000)
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr('desktop.nfc_bridge.SerialRC522Reader.write',
+                        lambda self, token: {'written': len(token) == 64})
     profile.issue()
     nfc = window.page_map['قراءة NFC']
-    qtbot.waitUntil(lambda: len(nfc.token.text()) == 64, timeout=15000)
+    qtbot.waitUntil(lambda: len(nfc.token.text()) == 64 and nfc.pending_card is None,
+                    timeout=15000)
+    monkeypatch.setattr('desktop.nfc_bridge.SerialRC522Reader.read',
+                        lambda self: {'ok': True, 'token': nfc.token.text()})
     profile.view.clear()
     nfc.scan()
     qtbot.waitUntil(lambda: 'مريض من واجهة PySide6' in profile.view.toPlainText(), timeout=15000)

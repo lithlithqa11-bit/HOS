@@ -19,7 +19,7 @@ def main():
         env_file.write_text(
             f'DATABASE_URL=postgresql+psycopg://medilink:{db_password}@127.0.0.1:55432/medilink\n'
             f'JWT_SECRET={secrets.token_urlsafe(48)}\nDEMO_PASSWORD={demo_password}\n'
-            'API_URL=http://127.0.0.1:8000\nNFC_MODE=mock\n'
+            'API_URL=http://127.0.0.1:8000\nNFC_PORT=COM6\n'
             f'POSTGRES_USER=medilink\nPOSTGRES_PASSWORD={db_password}\nPOSTGRES_DB=medilink\n',
             encoding='utf-8')
     values = dict(line.split('=', 1) for line in env_file.read_text().splitlines() if '=' in line)

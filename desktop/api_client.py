@@ -63,10 +63,12 @@ class Tasks(QObject):
         self.pool = QThreadPool(self)
         self.pending = set()
 
-    def submit(self, function, callback):
+    def submit(self, function, callback, failed=None):
         worker = Worker(function)
         self.pending.add(worker)
         worker.signals.success.connect(callback)
+        if failed is not None:
+            worker.signals.error.connect(failed)
         worker.signals.error.connect(self.error.emit)
         worker.signals.finished.connect(lambda: self._finished(worker))
         self.busy.emit(True)

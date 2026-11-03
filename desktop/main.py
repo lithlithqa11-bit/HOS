@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 680)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.api = ApiClient(api_url or os.getenv('API_URL', 'http://127.0.0.1:8000'))
-        self.nfc_executable = os.getenv('NFC_EXECUTABLE', 'nfc_cpp/build/nfc_reader.exe')
+        self.nfc_port = os.getenv('NFC_PORT', 'COM6')
         self.employee = None
         self.generation = 0
         self.tasks = Tasks(self)
@@ -45,10 +45,11 @@ class MainWindow(QMainWindow):
     def has_role(self, *names):
         return bool(set(self.employee['roles']).intersection(names))
 
-    def request(self, method, path, data=None, done=None):
+    def request(self, method, path, data=None, done=None, failed=None):
         generation = self.generation
         self.tasks.submit(lambda: self.api.request(method, path, data),
-                          lambda result: done(result) if generation == self.generation and done else None)
+                          lambda result: done(result) if generation == self.generation and done else None,
+                          lambda error: failed(error) if generation == self.generation and failed else None)
 
     def sign_in(self, username, password):
         self.request('POST', '/api/auth/login', {'username': username, 'password': password}, self.signed_in)
@@ -117,11 +118,10 @@ class MainWindow(QMainWindow):
         page.show_profile(data)
         self.nav.setCurrentRow(self.pages.indexOf(page))
 
-    def card_issued(self, data):
+    def card_prepared(self, data):
         page = self.page_map['قراءة NFC']
-        page.token.setText(data['token'])
         self.nav.setCurrentRow(self.pages.indexOf(page))
-        self.message('أُصدرت البطاقة وأُلغي الرمز السابق إن وُجد. الرمز يظهر مرة واحدة؛ اضغط قراءة للمحاكاة.')
+        page.prepare_and_write(data)
 
     def sign_out(self):
         self.generation += 1

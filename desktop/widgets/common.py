@@ -129,8 +129,8 @@ class Page(QWidget):
         self.actions = QHBoxLayout()
         self.layout.addLayout(self.actions)
 
-    def request(self, method, path, data=None, done=None):
-        self.window.request(method, path, data, done or (lambda _: self.refresh()))
+    def request(self, method, path, data=None, done=None, failed=None):
+        self.window.request(method, path, data, done or (lambda _: self.refresh()), failed)
 
     def refresh(self):
         pass

@@ -1,34 +1,64 @@
 import json
-import subprocess
-from types import SimpleNamespace
+
 import pytest
-from desktop.nfc_bridge import MockNFCReader, RealNFCReader, NFCError
+
+from desktop.nfc_bridge import NFCError, SerialRC522Reader
 
 
-def test_mock_token():
-    assert MockNFCReader().read('a' * 64)['token'] == 'a' * 64
-    for invalid in ('', '12345678', 'G' * 64):
-        with pytest.raises(NFCError):
-            MockNFCReader().read(invalid)
+class FakePort:
+    def __init__(self, messages):
+        self.messages = iter(messages)
+        self.sent = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
+
+    def readline(self):
+        return next(self.messages, b'')
+
+    def write(self, data):
+        self.sent.append(data)
+
+    def flush(self):
+        pass
 
 
-@pytest.mark.parametrize('stdout,returncode', [('not json', 0), ('[]', 0),
-    ('{"ok":false,"error":"no_reader"}', 1), ('{"ok":true,"uid":"1234"}', 0)])
-def test_invalid_cpp_protocol(monkeypatch, stdout, returncode):
-    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: SimpleNamespace(stdout=stdout, returncode=returncode))
-    with pytest.raises(NFCError):
-        RealNFCReader('reader.exe').read()
+def wire(body):
+    return (json.dumps(body) + '\n').encode('ascii')
 
 
-def test_real_bridge_subprocess_json(monkeypatch):
-    def run(args, **kwargs):
-        assert args[1] == '--read' and kwargs['shell'] is False
-        assert kwargs['timeout'] == 15
-        return SimpleNamespace(stdout=json.dumps({'ok': True, 'token': 'a' * 64}), returncode=0)
-    monkeypatch.setattr(subprocess, 'run', run)
-    assert RealNFCReader('reader.exe').read()['token'] == 'a' * 64
+def test_serial_reader_ignores_boot_and_diagnostics(monkeypatch):
+    port = FakePort([b'boot noise\n', wire({'ok': True, 'status': 'ready'}),
+                     wire({'ok': True, 'status': 'reader_connected'}),
+                     wire({'ok': True, 'status': 'read_ready'}),
+                     wire({'ok': True, 'token': 'a' * 64})])
+    monkeypatch.setattr('desktop.nfc_bridge.serial.Serial', lambda *a, **k: port)
+    assert SerialRC522Reader('COM6').read()['token'] == 'a' * 64
+    assert port.sent == [b'READ\n']
 
 
-def test_missing_executable():
-    with pytest.raises(NFCError):
-        RealNFCReader('definitely_not_present.exe').read()
+def test_serial_reader_rejects_old_uid_firmware(monkeypatch):
+    port = FakePort([wire({'ok': True, 'uid': 'aabbccdd'})])
+    monkeypatch.setattr('desktop.nfc_bridge.serial.Serial', lambda *a, **k: port)
+    with pytest.raises(NFCError, match='UID'):
+        SerialRC522Reader('COM6').read()
+
+
+def test_serial_write_waits_for_ready_and_verified_result(monkeypatch):
+    port = FakePort([wire({'ok': True, 'status': 'ready'}),
+                     wire({'ok': False, 'status': 'card_not_provisioned'}),
+                     wire({'ok': True, 'status': 'write_ready'}),
+                     wire({'ok': True, 'written': True})])
+    monkeypatch.setattr('desktop.nfc_bridge.serial.Serial', lambda *a, **k: port)
+    assert SerialRC522Reader('COM6').write('a' * 64)['written'] is True
+    assert port.sent == [b'WRITE ' + b'a' * 64 + b'\n']
+
+
+def test_serial_reader_reports_missing_rc522(monkeypatch):
+    port = FakePort([wire({'ok': False, 'status': 'reader_not_detected'})])
+    monkeypatch.setattr('desktop.nfc_bridge.serial.Serial', lambda *a, **k: port)
+    with pytest.raises(NFCError, match='RC522'):
+        SerialRC522Reader('COM6').read()

@@ -139,7 +139,7 @@ class ProfilePage(Page):
         self.patient_id = None
         button('تحديث', self.refresh, self.actions)
         if window.has_role('receptionist'):
-            button('إصدار / استبدال بطاقة', self.issue, self.actions)
+            self.issue_button = button('تهيئة البطاقة تلقائياً', self.issue, self.actions)
             button('إلغاء البطاقة', self.revoke, self.actions)
         if window.has_role('doctor', 'nurse'):
             button('حساسية / مرض مزمن', self.fact, self.actions)
@@ -148,10 +148,22 @@ class ProfilePage(Page):
             button('مشاركة زيارة', self.share, self.actions)
         self.view = QTextBrowser()
         self.layout.addWidget(self.view)
+        self.card_status = QLabel('حالة البطاقة: جارٍ التحميل…')
+        self.card_status.setObjectName('card')
+        self.layout.addWidget(self.card_status)
 
     def refresh(self):
         if self.patient_id:
             self.request('GET', f'/api/patients/{self.patient_id}', done=self.show_profile)
+            self.request('GET', f'/api/patients/{self.patient_id}/cards', done=self.show_card_status)
+
+    def show_card_status(self, cards):
+        active = next((card for card in cards if card.get('active')), None)
+        if active:
+            issued = str(active.get('issued_at', '')).replace('T', ' ')[:19]
+            self.card_status.setText(f'حالة البطاقة: فعالة • رقم السجل {active["card_id"]} • الإصدار {issued}')
+        else:
+            self.card_status.setText('حالة البطاقة: لا توجد بطاقة فعالة')
 
     def show_profile(self, data):
         self.patient_id = data['id']
@@ -173,12 +185,35 @@ class ProfilePage(Page):
         self.view.setHtml('<div dir="rtl">' + content + '</div>')
 
     def issue(self):
-        if self.patient_id:
-            self.request('POST', f'/api/patients/{self.patient_id}/cards', done=self.window.card_issued)
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self.patient_id or not self.issue_button.isEnabled():
+            return
+        reader_page = self.window.page_map['قراءة NFC']
+        if not reader_page.scan_button.isEnabled():
+            self.window.message('انتظر انتهاء عملية القارئ الحالية قبل تهيئة بطاقة أخرى')
+            return
+        if QMessageBox.question(self, 'تهيئة بطاقة المريض',
+                'قرّب بطاقة MIFARE Classic 1K التجريبية من RC522 وأبقها ثابتة. '
+                'ستُستبدل بيانات الكتل 4–6؛ استخدم بطاقة منفصلة عن القديمة عند الاستبدال. '
+                'رمز البطاقة القديمة يبقى فعالاً بالنظام حتى تنجح التهيئة. متابعة؟') \
+                != QMessageBox.StandardButton.Yes:
+            return
+        self.issue_button.setEnabled(False)
+        self.request('POST', f'/api/patients/{self.patient_id}/cards/prepare',
+                     done=self.prepared, failed=self.prepare_failed)
+
+    def prepared(self, data):
+        self.issue_button.setEnabled(True)
+        self.window.card_prepared(data)
+
+    def prepare_failed(self, _):
+        self.issue_button.setEnabled(True)
 
     def revoke(self):
         if self.patient_id:
-            self.request('DELETE', f'/api/patients/{self.patient_id}/cards', done=lambda _: self.window.message('أُلغيت البطاقة'))
+            self.request('DELETE', f'/api/patients/{self.patient_id}/cards',
+                         done=lambda _: (self.show_card_status([]), self.window.message('أُلغيت البطاقة')))
 
     def fact(self):
         if not self.patient_id:
@@ -209,47 +244,104 @@ class ProfilePage(Page):
 class NFCPage(Page):
     def __init__(self, window):
         super().__init__(window, 'قارئ NFC', 'البطاقة تحمل رمزاً عشوائياً فقط؛ يلزم تسجيل دخول الموظف للوصول إلى الملف.')
-        self.mode = combo([('محاكاة — دون جهاز', 'mock'), ('قارئ PC/SC حقيقي', 'real')])
-        import os
-        self.mode.setCurrentIndex(1 if os.getenv('NFC_MODE') == 'real' else 0)
-        self.actions.addWidget(self.mode)
-        self.token = line('ألصق رمز البطاقة التجريبية أو أصدر بطاقة من ملف المريض')
+        self.token = line('أصدر بطاقة من ملف المريض ثم اكتب الرمز عليها')
+        self.token.setReadOnly(True)
         self.layout.addWidget(self.token)
-        self.status = QLabel('الحالة: جاهز للمحاكاة')
+        self.pending_card = None
+        self.status = QLabel(f'الحالة: جاهز لقارئ RC522 على {window.nfc_port}')
         self.status.setObjectName('card')
+        self.status.setWordWrap(True)
         self.layout.addWidget(self.status)
-        button('قراءة البطاقة', self.scan, self.actions)
-        button('مسح الرمز', lambda: self.token.clear(), self.actions)
+        self.scan_button = button('قراءة مباشرة من RC522', self.scan, self.actions)
+        self.write_button = None
         if window.has_role('receptionist'):
-            button('كتابة الرمز على بطاقة Type 2 تجريبية', self.write, self.actions)
+            self.write_button = button('كتابة الرمز على بطاقة تجريبية', self.write, self.actions)
         self.layout.addStretch()
 
+    def set_card_busy(self, busy):
+        self.scan_button.setEnabled(not busy)
+        if self.write_button is not None:
+            self.write_button.setEnabled(not busy)
+        self.token.setEnabled(not busy)
+
     def scan(self):
-        from desktop.nfc_bridge import MockNFCReader, RealNFCReader
-        reader = MockNFCReader() if self.mode.currentData() == 'mock' else RealNFCReader(self.window.nfc_executable)
-        token = self.token.text().strip()
-        if not token and self.mode.currentData() == 'mock':
-            self.status.setText('الحالة: أدخل رمز بطاقة أو أصدر بطاقة من ملف المريض')
+        from desktop.nfc_bridge import SerialRC522Reader
+        if not self.scan_button.isEnabled():
             return
-        self.status.setText('الحالة: جارٍ قراءة البطاقة…')
-        self.window.tasks.submit(lambda: reader.read(token), self.scan_result)
+        self.status.setText('الحالة: بانتظار البطاقة قرب RC522 (المهلة نحو 20 ثانية)…')
+        self.set_card_busy(True)
+        self.window.tasks.submit(lambda: SerialRC522Reader(self.window.nfc_port).read(),
+                                 self.scan_result, self.scan_failed)
 
     def scan_result(self, result):
-        self.request('POST', '/api/nfc/scan', {'token': result['token']}, done=self.scanned)
+        self.status.setText('الحالة: قُرئت البطاقة، جارٍ التحقق من رمزها…')
+        self.request('POST', '/api/nfc/scan', {'token': result['token']},
+                     done=self.scanned, failed=self.scan_failed)
 
     def scanned(self, data):
-        token = str(data.get('card', {}).get('token') or data.get('token') or '')
-        masked = (token[:8] + '…' + token[-6:]) if len(token) > 16 else token
-        self.status.setText(f'الحالة: تمت القراءة بنجاح • الرمز {masked}')
+        self.status.setText('الحالة: تمت قراءة البطاقة وفتح ملف المريض')
+        self.set_card_busy(False)
         self.window.show_scanned(data)
 
+    def scan_failed(self, error):
+        if 'بطاقة غير معروفة أو ملغاة' in error:
+            self.status.setText('الحالة: البطاقة قُرئت لكن رمزها غير فعّال. افتح ملف المريض واضغط «تهيئة البطاقة تلقائياً».')
+        else:
+            self.status.setText(f'الحالة: تعذرت قراءة البطاقة: {error}')
+        self.set_card_busy(False)
+
     def write(self):
-        from desktop.nfc_bridge import RealNFCReader
+        self._start_write(confirm=True)
+
+    def prepare_and_write(self, data):
+        self.pending_card = (data['patient_id'], data['card_id'])
+        self.token.setText(data['token'])
+        self._start_write(confirm=False)
+
+    def _start_write(self, confirm):
+        from desktop.nfc_bridge import SerialRC522Reader, TOKEN
         from PySide6.QtWidgets import QMessageBox
-        if QMessageBox.question(self, 'كتابة بطاقة تجريبية',
-                'ستُستبدل بيانات الصفحات 4–12. استخدم بطاقة Type 2 تجريبية فارغة مخصصة للمشروع. متابعة؟') \
-                != QMessageBox.StandardButton.Yes:
+        if self.write_button is None or not self.write_button.isEnabled():
+            self.status.setText('الحالة: القارئ مشغول؛ أعد محاولة الكتابة بعد انتهاء العملية الحالية.')
+            return
+        if self.pending_card is None:
+            self.status.setText('الحالة: افتح ملف المريض واضغط «تهيئة البطاقة تلقائياً» أولاً.')
             return
         token = self.token.text().strip()
-        self.window.tasks.submit(lambda: RealNFCReader(self.window.nfc_executable).write(token),
-                                 lambda _: self.window.message('كُتب الرمز وتحققت قراءته'))
+        if not TOKEN.fullmatch(token):
+            self.status.setText('الحالة: رمز التهيئة غير صالح؛ أعد التهيئة من ملف المريض.')
+            return
+        if confirm and QMessageBox.question(self, 'إعادة كتابة البطاقة التجريبية',
+                'ستُستبدل الكتل 4–6 من القطاع 1 في بطاقة MIFARE Classic 1K. '
+                'استخدم بطاقة تجريبية مخصصة للمشروع فقط. متابعة؟') \
+                != QMessageBox.StandardButton.Yes:
+            return
+        self.status.setText('الحالة: بانتظار البطاقة التجريبية لكتابة الرمز (المهلة نحو 20 ثانية)…')
+        self.set_card_busy(True)
+        self.window.tasks.submit(lambda: SerialRC522Reader(self.window.nfc_port).write(token),
+                                 self.written, self.write_failed)
+
+    def written(self, _):
+        if self.pending_card is None:
+            self.set_card_busy(False)
+            return
+        patient_id, card_id = self.pending_card
+        self.status.setText('الحالة: كُتب الرمز وتحققت قراءته؛ جارٍ تفعيل البطاقة…')
+        self.request('POST', f'/api/patients/{patient_id}/cards/{card_id}/activate',
+                     {'token': self.token.text().strip()}, done=self.activated,
+                     failed=self.activation_failed)
+
+    def activated(self, data):
+        self.pending_card = None
+        self.status.setText('الحالة: البطاقة مكتوبة ومفعّلة وجاهزة للقراءة.')
+        self.set_card_busy(False)
+        self.window.message('اكتملت تهيئة البطاقة وجرى التحقق من كتابتها')
+        self.window.open_patient(data['patient_id'])
+
+    def activation_failed(self, error):
+        self.status.setText(f'الحالة: كُتبت البطاقة، لكن تعذر تفعيلها: {error}. أعد محاولة الكتابة أو التهيئة.')
+        self.set_card_busy(False)
+
+    def write_failed(self, error):
+        self.status.setText(f'الحالة: تعذرت كتابة البطاقة: {error}. أبقِ الرمز لإعادة المحاولة.')
+        self.set_card_busy(False)

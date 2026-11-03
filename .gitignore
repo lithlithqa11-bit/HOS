@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
+nfc_esp8266/.pio/
+# Local cache left by the retired PC/SC adapter; no source depends on it.
 nfc_cpp/build/
 *.log
 *.pdf

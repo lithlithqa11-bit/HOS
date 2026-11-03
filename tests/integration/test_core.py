@@ -38,6 +38,34 @@ def test_core_workflow_and_revocation(client, auth):
     assert client.get('/api/patients?q=اسم', headers=headers).json()[0]['id'] == patient_id
 
 
+def test_prepared_card_keeps_previous_card_until_activation(client, auth):
+    headers = auth()
+    old = client.post('/api/patients/1/cards', headers=headers).json()
+    prepared = client.post('/api/patients/1/cards/prepare', headers=headers)
+    assert prepared.status_code == 201
+    new = prepared.json()
+    path = f'/api/patients/1/cards/{new["card_id"]}/activate'
+    assert client.post('/api/nfc/scan', headers=headers, json={'token': old['token']}).status_code == 200
+    assert client.post('/api/nfc/scan', headers=headers, json={'token': new['token']}).status_code == 404
+    assert client.post(path, headers=headers, json={'token': old['token']}).status_code == 409
+    assert client.post('/api/nfc/scan', headers=headers, json={'token': old['token']}).status_code == 200
+    activated = client.post(path, headers=headers, json={'token': new['token']})
+    assert activated.status_code == 200 and activated.json()['active'] is True
+    assert client.post(path, headers=headers, json={'token': new['token']}).status_code == 200
+    assert client.post('/api/nfc/scan', headers=headers, json={'token': old['token']}).status_code == 404
+    assert client.post('/api/nfc/scan', headers=headers, json={'token': new['token']}).status_code == 200
+
+
+def test_new_preparation_invalidates_stale_preparation(client, auth):
+    headers = auth()
+    first = client.post('/api/patients/1/cards/prepare', headers=headers).json()
+    second = client.post('/api/patients/1/cards/prepare', headers=headers).json()
+    first_path = f'/api/patients/1/cards/{first["card_id"]}/activate'
+    assert client.post(first_path, headers=headers, json={'token': first['token']}).status_code == 409
+    second_path = f'/api/patients/1/cards/{second["card_id"]}/activate'
+    assert client.post(second_path, headers=headers, json={'token': second['token']}).status_code == 200
+
+
 def test_role_and_hospital_projections(client, auth):
     doctor, receptionist, nurse, pharmacist = auth('doctor'), auth(), auth('nurse'), auth('pharmacist')
     for role in ('doctor', 'nurse', 'pharmacist', 'admin'):
