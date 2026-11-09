@@ -11,3 +11,4 @@ nfc_cpp/build/
 *.log
 *.pdf
 demo_credentials.txt
+.env.local
