@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy import select, or_
-from backend.app.core.security import audit, role_names
+from sqlalchemy.orm import selectinload
+from backend.app.core.security import audit
 from backend.app.db.models import Patient, PatientHospitalAccess, Visit, Allergy, ChronicCondition
 
 
@@ -51,26 +52,23 @@ def demographics(patient):
 def patient_profile(db, employee, patient_id):
     patient = patient_access(db, employee, patient_id)
     result = demographics(patient)
-    roles = role_names(employee)
-    if roles.intersection({'doctor', 'nurse'}):
-        for name, model in [('allergies', Allergy), ('chronic_conditions', ChronicCondition)]:
-            facts = db.scalars(select(model).where(model.patient_id == patient_id,
-                               or_(model.hospital_id == employee.hospital_id, model.shared.is_(True)))).all()
-            result[name] = [{'id': f.id, 'description': f.description, 'hospital_id': f.hospital_id,
-                             'shared': f.shared} for f in facts]
-            for fact in facts:
-                if fact.hospital_id != employee.hospital_id:
-                    audit(db, employee, 'cross_hospital.read', patient_id, f'{name}:{fact.id};source:{fact.hospital_id}')
-    if 'doctor' in roles:
-        visits = db.scalars(select(Visit).where(Visit.patient_id == patient_id,
-                            or_(Visit.hospital_id == employee.hospital_id, Visit.shared.is_(True)))
-                            .order_by(Visit.created_at.desc(), Visit.id.desc())).all()
-        result['visits'] = []
-        for visit in visits:
-            result['visits'].append({'id': visit.id, 'hospital_id': visit.hospital_id, 'notes': visit.notes,
-                                    'shared': visit.shared, 'created_at': visit.created_at,
-                                    'diagnoses': [d.description for d in visit.diagnoses]})
-            if visit.hospital_id != employee.hospital_id:
-                audit(db, employee, 'cross_hospital.read', patient_id, f'visit:{visit.id};source:{visit.hospital_id}')
+    for name, model in [('allergies', Allergy), ('chronic_conditions', ChronicCondition)]:
+        facts = db.scalars(select(model).where(model.patient_id == patient_id,
+                           or_(model.hospital_id == employee.hospital_id, model.shared.is_(True)))).all()
+        result[name] = [{'id': f.id, 'description': f.description, 'hospital_id': f.hospital_id,
+                         'shared': f.shared} for f in facts]
+        for fact in facts:
+            if fact.hospital_id != employee.hospital_id:
+                audit(db, employee, 'cross_hospital.read', patient_id, f'{name}:{fact.id};source:{fact.hospital_id}')
+    visits = db.scalars(select(Visit).options(selectinload(Visit.diagnoses)).where(Visit.patient_id == patient_id,
+                        or_(Visit.hospital_id == employee.hospital_id, Visit.shared.is_(True)))
+                        .order_by(Visit.created_at.desc(), Visit.id.desc())).all()
+    result['visits'] = []
+    for visit in visits:
+        result['visits'].append({'id': visit.id, 'hospital_id': visit.hospital_id, 'notes': visit.notes,
+                                'shared': visit.shared, 'created_at': visit.created_at,
+                                'diagnoses': [d.description for d in visit.diagnoses]})
+        if visit.hospital_id != employee.hospital_id:
+            audit(db, employee, 'cross_hospital.read', patient_id, f'visit:{visit.id};source:{visit.hospital_id}')
     audit(db, employee, 'patient.read', patient_id)
     return result

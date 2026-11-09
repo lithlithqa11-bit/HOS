@@ -34,8 +34,9 @@ def seed(db, password):
                           sex='female' if i == 1 else 'male', phone='00000000000')
         db.add(patient)
         db.flush()
-        db.add(PatientHospitalAccess(patient_id=patient.id, hospital_id=hospitals[0].id,
-                                     granted_by=employees[0].id))
+        for hospital in hospitals:
+            db.add(PatientHospitalAccess(patient_id=patient.id, hospital_id=hospital.id,
+                                         granted_by=employees[0].id))
     db.add_all([HospitalConnection(source_id=hospitals[0].id, destination_id=hospitals[1].id),
                 HospitalConnection(source_id=hospitals[1].id, destination_id=hospitals[0].id),
                 Medication(name='دواء تدريبي A (غير مخصص للاستخدام)'),

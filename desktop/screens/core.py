@@ -218,16 +218,21 @@ class ProfilePage(Page):
     def fact(self):
         if not self.patient_id:
             return
+        shared = QCheckBox()
+        shared.setChecked(True)
         dialog = Form('إضافة معلومة طبية', [('kind', 'النوع', combo([('حساسية', 'allergy'), ('مرض مزمن', 'chronic')])),
-                      ('description', 'الوصف', line()), ('shared', 'السماح بالمشاركة', QCheckBox())], self)
+                      ('description', 'الوصف', line()),
+                      ('shared', 'مشاركة تلقائية مع كل المستشفيات (أزل العلامة لإبقائها محلية)', shared)], self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.request('POST', f'/api/patients/{self.patient_id}/facts', dialog.data())
 
     def visit(self):
         if not self.patient_id:
             return
+        shared = QCheckBox()
+        shared.setChecked(True)
         dialog = Form('زيارة جديدة', [('notes', 'الملاحظات', line()), ('diagnosis', 'التشخيص', line()),
-                                     ('shared', 'السماح بالمشاركة', QCheckBox())], self)
+                                     ('shared', 'مشاركة تلقائية مع كل المستشفيات (أزل العلامة لإبقائها محلية)', shared)], self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.request('POST', '/api/visits', {'patient_id': self.patient_id, **dialog.data()})
 

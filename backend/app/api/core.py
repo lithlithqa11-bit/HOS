@@ -73,7 +73,14 @@ def create_patient(data: PatientInput, employee=Depends(require('receptionist'))
     patient = Patient(**data.model_dump())
     db.add(patient)
     db.flush()
-    db.add(PatientHospitalAccess(patient_id=patient.id, hospital_id=employee.hospital_id, granted_by=employee.id))
+    # The patient directory is shared across the hospital network. Clinical
+    # notes and facts still use their separate `shared` controls.
+    for hospital_id in db.scalars(select(Hospital.id)):
+        db.add(PatientHospitalAccess(patient_id=patient.id, hospital_id=hospital_id,
+                                     granted_by=employee.id))
+        if hospital_id != employee.hospital_id:
+            audit(db, employee, 'access.change', patient.id,
+                  f'hospital:{hospital_id};active:true;source:auto_patient_directory')
     audit(db, employee, 'patient.create', patient.id)
     return demographics(patient)
 
@@ -258,6 +265,11 @@ def add_hospital(data: HospitalInput, employee=Depends(require('admin')), db: Se
     hospital = Hospital(**data.model_dump())
     db.add(hospital)
     db.flush()
+    for patient_id in db.scalars(select(Patient.id)):
+        db.add(PatientHospitalAccess(patient_id=patient_id, hospital_id=hospital.id,
+                                     granted_by=employee.id))
+        audit(db, employee, 'access.change', patient_id,
+              f'hospital:{hospital.id};active:true;source:new_hospital_directory_sync')
     audit(db, employee, 'hospital.create', detail=f'hospital:{hospital.id}')
     return {'id': hospital.id}
 

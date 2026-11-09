@@ -10,7 +10,7 @@ if (Select-String -LiteralPath '.env' -Pattern ':55432/medilink' -Quiet) {
     & $pythonExe -m scripts.setup_local
     if ($LASTEXITCODE -ne 0) { throw 'Local PostgreSQL unavailable' }
 }
-& $pythonExe -m alembic upgrade head
+& $pythonExe -m scripts.upgrade_db
 if ($LASTEXITCODE -ne 0) { throw 'Migration failed' }
 & $pythonExe -m scripts.seed
 if ($LASTEXITCODE -ne 0) { throw 'Seed failed' }

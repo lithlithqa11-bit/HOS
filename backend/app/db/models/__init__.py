@@ -90,7 +90,7 @@ class Visit(Identity, Base):
     hospital_id: Mapped[int] = mapped_column(ForeignKey('hospitals.id'), index=True)
     doctor_id: Mapped[int] = mapped_column(ForeignKey('employees.id'))
     notes: Mapped[str] = mapped_column(Text, default='')
-    shared: Mapped[bool] = mapped_column(default=False)
+    shared: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     patient: Mapped[Patient] = relationship(back_populates='visits')
     diagnoses: Mapped[list['Diagnosis']] = relationship(back_populates='visit')
@@ -107,7 +107,7 @@ class ClinicalFact:
     patient_id: Mapped[int] = mapped_column(ForeignKey('patients.id'), index=True)
     hospital_id: Mapped[int] = mapped_column(ForeignKey('hospitals.id'))
     description: Mapped[str] = mapped_column(String(500))
-    shared: Mapped[bool] = mapped_column(default=False)
+    shared: Mapped[bool] = mapped_column(default=True)
 
 
 class Allergy(Identity, ClinicalFact, Base):

@@ -16,34 +16,36 @@ def main():
         sys.path.insert(0, str(root))
     load_dotenv(root / '.env')
     flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-    # Provision the bundled PostgreSQL cluster only for its dedicated local URL.
-    # Existing installations may point at Docker, Supabase, or another database.
-    database_url = os.getenv('DATABASE_URL', '')
-    commands = []
-    if ':55432/medilink' in database_url:
-        commands.append(('scripts.setup_local',))
-    commands.extend([('alembic', 'upgrade', 'head'), ('scripts.seed',)])
-    for args in commands:
-        subprocess.run([sys.executable, '-m', *args], cwd=root, check=True, creationflags=flags)
+    def api_is_responding():
+        try:
+            httpx.get('http://127.0.0.1:8000/health', timeout=5, trust_env=False)
+            return True
+        except httpx.RequestError:
+            return False
+
+    already_running = api_is_responding()
+
+    if not already_running:
+        # The EXE can initialize its isolated local database. Hosted databases
+        # are provisioned separately and must remain reachable for their own
+        # migrations or demo seeding; neither is required to open the UI.
+        if ':55432/medilink' in os.getenv('DATABASE_URL', ''):
+            for args in (('scripts.setup_local',), ('scripts.upgrade_db',), ('scripts.seed',)):
+                subprocess.run([sys.executable, '-m', *args], cwd=root,
+                           check=True, creationflags=flags)
+
     from backend.app.main import app
     server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=8000, log_level='warning'))
     import threading
     thread = threading.Thread(target=server.run, daemon=True)
-    try:
-        already_running = httpx.get('http://127.0.0.1:8000/health', timeout=2, trust_env=False).json() == {
-            'status': 'ok', 'database': 'postgresql'}
-    except (httpx.RequestError, ValueError):
-        already_running = False
     if not already_running:
         thread.start()
-    for _ in range(80):
-        try:
-            if httpx.get('http://127.0.0.1:8000/health', timeout=.5, trust_env=False).status_code == 200:
+        for _ in range(60):
+            if api_is_responding():
                 break
-        except httpx.RequestError:
-            time.sleep(.1)
-    else:
-        raise RuntimeError('FastAPI did not become ready')
+            time.sleep(.5)
+        else:
+            raise RuntimeError('FastAPI did not respond at http://127.0.0.1:8000/health')
     from desktop.main import main as desktop_main
     try:
         return desktop_main()

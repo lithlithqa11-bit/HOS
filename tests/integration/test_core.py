@@ -74,12 +74,12 @@ def test_role_and_hospital_projections(client, auth):
         assert client.post('/api/visits', headers=headers, json={'patient_id': 1}).status_code == 403
     assert client.post('/api/visits', headers=doctor, json={'patient_id': 1, 'notes': 'private'}).status_code == 201
     assert 'visits' in client.get('/api/patients/1', headers=doctor).json()
-    assert 'visits' not in client.get('/api/patients/1', headers=nurse).json()
+    assert 'visits' in client.get('/api/patients/1', headers=nurse).json()
     for headers in (receptionist, pharmacist):
         result = client.get('/api/patients/1', headers=headers).json()
-        assert 'visits' not in result and 'allergies' not in result
-    assert client.get('/api/patients/1', headers=auth('doctor', 'b')).status_code == 403
-    assert client.get('/api/patients', headers=auth('receptionist', 'b')).json() == []
+        assert 'visits' in result and 'allergies' in result and 'chronic_conditions' in result
+    assert client.get('/api/patients/1', headers=auth('doctor', 'b')).status_code == 200
+    assert client.get('/api/patients', headers=auth('receptionist', 'b')).json()[0]['id'] == 1
 
 
 def test_cross_hospital_sharing_and_audit(client, auth):

@@ -11,11 +11,11 @@
 ## المرضى والسجل الطبي
 
 - `POST /patients`: استقبال؛ full_name، birth_date، sex (male/female/other)، phone.
-- `GET /patients?q=`: بحث في المرضى الممنوحين للمستشفى فقط، حتى 100 نتيجة؛ الاسم أو الرقم.
-- `GET /patients/{id}`: بيانات تعريفية، والطبيب يرى visits والتشخيصات؛ الطبيب والممرض يريان allergies وchronic_conditions. غيرهما لا يتلقى تلك الحقول إطلاقاً.
+- `GET /patients?q=`: بحث في المرضى الممنوحين للمستشفى، حتى 100 نتيجة؛ الاسم أو الرقم. دليل المرضى يزامن تلقائياً بين المستشفيات.
+- `GET /patients/{id}`: لكل موظف مخوّل؛ يعيد البيانات التعريفية والزيارات والتشخيصات والحساسية والأمراض المزمنة المشتركة بين المستشفيات. عمليات الإنشاء والتعديل تبقى محكومة بالأدوار.
 - `PUT /patients/{id}`: استقبال؛ تعديل الحقول التعريفية كاملة.
-- `POST /patients/{id}/facts`: طبيب/ممرض؛ kind=allergy/chronic، description، shared.
-- `POST /visits`: طبيب؛ patient_id، notes، diagnosis، shared.
+- `POST /patients/{id}/facts`: طبيب/ممرض؛ kind=allergy/chronic، description، shared (افتراضياً true).
+- `POST /visits`: طبيب؛ patient_id، notes، diagnosis، shared (افتراضياً true).
 - `PATCH /visits/{id}/sharing`: طبيب من المصدر؛ shared=true/false.
 
 ## NFC

@@ -38,13 +38,13 @@ class VisitInput(Input):
     patient_id: int = Field(gt=0)
     notes: str = Field(default='', max_length=5000)
     diagnosis: str = Field(default='', max_length=2000)
-    shared: bool = False
+    shared: bool = True
 
 
 class FactInput(Input):
     kind: Literal['allergy', 'chronic']
     description: Annotated[str, Field(min_length=1, max_length=500)]
-    shared: bool = False
+    shared: bool = True
 
 
 class ShareInput(Input):
