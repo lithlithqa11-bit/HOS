@@ -16,7 +16,14 @@ def main():
         sys.path.insert(0, str(root))
     load_dotenv(root / '.env')
     flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-    for args in [('scripts.setup_local',), ('alembic', 'upgrade', 'head'), ('scripts.seed',)]:
+    # Provision the bundled PostgreSQL cluster only for its dedicated local URL.
+    # Existing installations may point at Docker, Supabase, or another database.
+    database_url = os.getenv('DATABASE_URL', '')
+    commands = []
+    if ':55432/medilink' in database_url:
+        commands.append(('scripts.setup_local',))
+    commands.extend([('alembic', 'upgrade', 'head'), ('scripts.seed',)])
+    for args in commands:
         subprocess.run([sys.executable, '-m', *args], cwd=root, check=True, creationflags=flags)
     from backend.app.main import app
     server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=8000, log_level='warning'))
