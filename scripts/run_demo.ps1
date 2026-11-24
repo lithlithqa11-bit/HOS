@@ -17,16 +17,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Seed failed' }
 New-Item -ItemType Directory -Path '.runtime' -Force | Out-Null
 $apiProcess = $null
 try {
-    $response = Invoke-RestMethod 'http://127.0.0.1:8000/health' -TimeoutSec 2
+    $response = Invoke-RestMethod 'http://127.0.0.1:8000/health' -TimeoutSec 5
     if ($response.database -ne 'postgresql') { throw 'Unexpected server at port 8000' }
 } catch {
     $apiProcess = Start-Process -FilePath $pythonExe -ArgumentList @('-m', 'uvicorn', 'backend.app.main:app', '--host', '127.0.0.1', '--port', '8000') -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput '.runtime/api.stdout.log' -RedirectStandardError '.runtime/api.stderr.log'
     $ready = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 500
         if ($apiProcess.HasExited) { throw 'API failed to start; see .runtime/api.stderr.log' }
         try {
-            $response = Invoke-RestMethod 'http://127.0.0.1:8000/health' -TimeoutSec 1
+            $response = Invoke-RestMethod 'http://127.0.0.1:8000/health' -TimeoutSec 5
             if ($response.status -eq 'ok') { $ready = $true; break }
         } catch { }
     }
