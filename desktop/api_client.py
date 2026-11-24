@@ -16,7 +16,9 @@ class ApiClient:
         headers = {'Authorization': f'Bearer {self.token}'} if self.token else {}
         try:
             response = httpx.request(method, self.base_url + path, json=data, headers=headers,
-                                     timeout=12, follow_redirects=False, trust_env=False)
+                                     timeout=30, follow_redirects=False, trust_env=False)
+        except httpx.TimeoutException as error:
+            raise ApiError('انتهت مهلة الاتصال بالخادم (استغرق الرد وقتاً طويلاً). أعد المحاولة.') from error
         except httpx.RequestError as error:
             raise ApiError('تعذر الاتصال بالخادم. تحقق من تشغيل FastAPI والاتصال ثم أعد المحاولة.') from error
         try:
