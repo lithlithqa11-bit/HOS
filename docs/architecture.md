@@ -13,13 +13,17 @@ flowchart LR
   Services --> Audit[Audit Log]
   Audit --> PG
   Desktop --> Bridge[Python serial + JSON]
-  Bridge --> Board[NodeMCU ESP8266]
-  Board --> Hardware[RC522 + بطاقة Classic 1K]
+  Bridge --> Board1[NodeMCU ESP8266]
+  Bridge --> Board2[ESP32-S3]
+  Board1 --> Reader1[RC522 عبر SPI]
+  Board2 --> Reader2[PN532 عبر I2C]
+  Reader1 --> Card[بطاقة MIFARE Classic 1K]
+  Reader2 --> Card
 ```
 
 ## حدود المسؤولية
 
-- Python هو تطبيق الأعمال وهياكل البيانات، وبرنامج ESP8266 خاص بالقارئ فقط. لا SQL في Desktop ولا بيانات طبية على البطاقة.
+- Python هو تطبيق الأعمال وهياكل البيانات، وبرنامجا ESP8266 وESP32-S3 خاصان بالقارئ فقط. لا SQL في Desktop ولا بيانات طبية على البطاقة.
 - خادم مركزي وقاعدة واحدة، مع hospital_id وقيود الوصول؛ ليس نظاماً موزعاً.
 - جميع الأوقات الطبية/الإدارية في الخادم UTC-aware. الرسائل موجهة للمستخدم بالعربية. أسماء حقول API بالإنكليزية لسهولة التكامل.
 - قاعدة البيانات هي المصدر الرسمي. الهياكل تعاد من الصفوف وتبقى صحيحة بعد إعادة التشغيل ومع تعدد عمليات API.

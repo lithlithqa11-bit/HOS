@@ -14,11 +14,11 @@ powershell -ExecutionPolicy Bypass -File scripts/run_demo.ps1
 
 الحسابات في Hospital A: `receptionist.a`، `doctor.a`، `nurse.a`، `pharmacist.a`، `admin.a`. في Hospital B استبدل `.a` بـ`.b`. كلمة المرور التجريبية مشتركة للحسابات لأغراض العرض فقط، ومولدة محلياً وليست داخل المصدر.
 
-ابدأ بـ`receptionist.a`، ثم «المرضى» ← «مريض جديد» ← «تهيئة البطاقة تلقائياً». قرّب بطاقة MIFARE Classic 1K التجريبية من NodeMCU ESP8266 وRC522؛ يكتب البرنامج الرمز ويتحقق منه ويفعّله، ثم يفتح ملف المريض. عند الاستبدال استخدم بطاقة منفصلة عن القديمة؛ يبقى رمز القديمة فعّالاً بالخادم إذا فشلت الكتابة.
+ابدأ بـ`receptionist.a` وافتح ملف مريض، ثم اختر منفذ القارئ في صفحة NFC واضغط «تهيئة البطاقة تلقائياً». البرنامج يدعم NodeMCU ESP8266 مع RC522 وESP32-S3 مع PN532 على بطاقة MIFARE Classic 1K؛ يكتب الرمز ويتحقق منه ويفعّله، ثم يفتح ملف المريض. عند الاستبدال استخدم بطاقة منفصلة عن القديمة؛ يبقى رمز القديمة فعّالاً بالخادم إذا فشلت الكتابة.
 
 ## تثبيت المشروع على جهاز Windows آخر
 
-المتطلبات: Python 3.12 أو أحدث، PostgreSQL 18 أو Docker Desktop، Git، وVS Code مع إضافتي Python وPython Debugger. للقارئ الفعلي يلزم NodeMCU ESP8266 وRC522 وبطاقة MIFARE Classic 1K تجريبية بمفتاح القطاع 1 الافتراضي.
+المتطلبات: Python 3.12 أو أحدث، PostgreSQL 18 أو Docker Desktop، Git، وVS Code مع إضافتي Python وPython Debugger. يدعم القارئ NodeMCU ESP8266 مع RC522 أو ESP32-S3 مع PN532، وبطاقة MIFARE Classic 1K تجريبية بمفتاح القطاع 1 الافتراضي.
 
 ### الخيار الأول: PostgreSQL مثبت محلياً
 

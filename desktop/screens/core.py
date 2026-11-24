@@ -1,8 +1,8 @@
 import html
 from urllib.parse import quote
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QFormLayout,
-                              QDialog, QTextBrowser, QCheckBox)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+                              QFormLayout, QDialog, QTextBrowser, QCheckBox, QComboBox)
 from desktop.widgets.common import Page, DataTable, Form, button, line, combo, date_input
 
 
@@ -194,7 +194,7 @@ class ProfilePage(Page):
             self.window.message('انتظر انتهاء عملية القارئ الحالية قبل تهيئة بطاقة أخرى')
             return
         if QMessageBox.question(self, 'تهيئة بطاقة المريض',
-                'قرّب بطاقة MIFARE Classic 1K التجريبية من RC522 وأبقها ثابتة. '
+                'قرّب بطاقة MIFARE Classic 1K التجريبية من القارئ المختار وأبقها ثابتة. '
                 'ستُستبدل بيانات الكتل 4–6؛ استخدم بطاقة منفصلة عن القديمة عند الاستبدال. '
                 'رمز البطاقة القديمة يبقى فعالاً بالنظام حتى تنجح التهيئة. متابعة؟') \
                 != QMessageBox.StandardButton.Yes:
@@ -253,11 +253,20 @@ class NFCPage(Page):
         self.token.setReadOnly(True)
         self.layout.addWidget(self.token)
         self.pending_card = None
-        self.status = QLabel(f'الحالة: جاهز لقارئ RC522 على {window.nfc_port}')
+        self.status = QLabel(f'الحالة: جاهز للقارئ على {window.nfc_port}')
         self.status.setObjectName('card')
         self.status.setWordWrap(True)
         self.layout.addWidget(self.status)
-        self.scan_button = button('قراءة مباشرة من RC522', self.scan, self.actions)
+        self._pn532_feedback_pending = False
+        port_row = QHBoxLayout()
+        port_row.addWidget(QLabel('منفذ القارئ:'))
+        self.port_select = QComboBox()
+        self.port_select.currentIndexChanged.connect(self.select_port)
+        port_row.addWidget(self.port_select)
+        self.refresh_ports_button = button('تحديث المنافذ', self.refresh_ports, port_row)
+        self.layout.addLayout(port_row)
+        self.refresh_ports()
+        self.scan_button = button('قراءة مباشرة من القارئ', self.scan, self.actions)
         self.write_button = None
         if window.has_role('receptionist'):
             self.write_button = button('كتابة الرمز على بطاقة تجريبية', self.write, self.actions)
@@ -265,25 +274,54 @@ class NFCPage(Page):
 
     def set_card_busy(self, busy):
         self.scan_button.setEnabled(not busy)
+        self.port_select.setEnabled(not busy)
+        self.refresh_ports_button.setEnabled(not busy)
         if self.write_button is not None:
             self.write_button.setEnabled(not busy)
         self.token.setEnabled(not busy)
+
+    def refresh_ports(self):
+        from serial.tools import list_ports
+
+        selected = self.window.nfc_port
+        self.port_select.blockSignals(True)
+        self.port_select.clear()
+        ports = {port.device: f'{port.device} — {port.description}'
+                 for port in list_ports.comports()}
+        ports.setdefault(selected, f'{selected} — المنفذ المحدد')
+        for device, label in sorted(ports.items()):
+            self.port_select.addItem(label, device)
+        index = self.port_select.findData(selected)
+        self.port_select.setCurrentIndex(index if index >= 0 else 0)
+        self.port_select.blockSignals(False)
+
+    def select_port(self, index):
+        port = self.port_select.itemData(index)
+        if not port:
+            return
+        self.window.nfc_port = port
+        self.status.setText(f'الحالة: جاهز للقارئ على {port}')
 
     def scan(self):
         from desktop.nfc_bridge import SerialRC522Reader
         if not self.scan_button.isEnabled():
             return
-        self.status.setText('الحالة: بانتظار البطاقة قرب RC522 (المهلة نحو 20 ثانية)…')
+        self._pn532_feedback_pending = False
+        self.status.setText('الحالة: بانتظار البطاقة قرب القارئ المختار (المهلة نحو 20 ثانية)…')
         self.set_card_busy(True)
         self.window.tasks.submit(lambda: SerialRC522Reader(self.window.nfc_port).read(),
                                  self.scan_result, self.scan_failed)
 
     def scan_result(self, result):
+        self._pn532_feedback_pending = 'PN532' in str(result.get('reader', ''))
         self.status.setText('الحالة: قُرئت البطاقة، جارٍ التحقق من رمزها…')
         self.request('POST', '/api/nfc/scan', {'token': result['token']},
-                     done=self.scanned, failed=self.scan_failed)
+                     done=self.scanned, failed=self.scan_api_failed)
 
     def scanned(self, data):
+        if self._pn532_feedback_pending:
+            self.report_reader_feedback(True)
+            self._pn532_feedback_pending = False
         self.status.setText('الحالة: تمت قراءة البطاقة وفتح ملف المريض')
         self.set_card_busy(False)
         self.window.show_scanned(data)
@@ -294,6 +332,24 @@ class NFCPage(Page):
         else:
             self.status.setText(f'الحالة: تعذرت قراءة البطاقة: {error}')
         self.set_card_busy(False)
+
+    def scan_api_failed(self, error):
+        if self._pn532_feedback_pending:
+            self.report_reader_feedback(False)
+            self._pn532_feedback_pending = False
+        self.scan_failed(error)
+
+    def report_reader_feedback(self, allowed):
+        from desktop.nfc_bridge import SerialRC522Reader
+
+        def send_feedback():
+            try:
+                SerialRC522Reader(self.window.nfc_port).feedback(allowed)
+            except Exception:
+                # The database result is already shown; feedback is best effort.
+                pass
+
+        self.window.tasks.submit(send_feedback, lambda _result: None)
 
     def write(self):
         self._start_write(confirm=True)
